@@ -1,0 +1,141 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Creates a customer master key (CMK) in AWS Key Management System (KMS) and grants access to test account
+
+Parameters:
+  testAccount:
+    Description: AWS AccountNumber for test account
+    Type: Number
+  project:
+    Description: Name of the project
+    Type: String
+  codeBuildCondition:
+    Description: Conditionally adds the access required by code build project role
+    Type: String
+    Default: false
+
+Conditions:
+  addCodeBuildResource: !Equals [ !Ref codeBuildCondition, true ]
+
+Resources:
+
+  kmsKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: Used by Assumed Roles in test account to Encrypt/Decrypt S3 artifacts
+      EnableKeyRotation: true
+      KeyPolicy:
+        Version: "2012-10-17"
+        Id: !Ref AWS::StackName
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - codepipeline.amazonaws.com
+            Action: "kms:*"
+            Resource: "*"
+          - Sid: Allows admin of the key
+            Effect: Allow
+            Principal:
+              AWS: !Sub arn:aws:iam::${AWS::AccountId}:root
+            Action:
+              - "kms:Create*"
+              - "kms:Describe*"
+              - "kms:Enable*"
+              - "kms:List*"
+              - "kms:Put*"
+              - "kms:Update*"
+              - "kms:Revoke*"
+              - "kms:Disable*"
+              - "kms:Get*"
+              - "kms:Delete*"
+              - "kms:ScheduleKeyDeletion"
+              - "kms:CancelKeyDeletion"
+            Resource: "*"
+          - Sid: Allow use of the key for project
+            Effect: Allow
+            Principal:
+              AWS:
+                - !Sub arn:aws:iam::${testAccount}:root
+                - !If
+                  - addCodeBuildResource
+                  - !Sub arn:aws:iam::${AWS::AccountId}:role/${project}CodeBuildRole
+                  - !Ref AWS::NoValue
+                - !If
+                  - addCodeBuildResource
+                  - !Sub arn:aws:iam::${AWS::AccountId}:role/${project}CodePipelineRole
+                  - !Ref AWS::NoValue
+            Action:
+              - kms:Encrypt
+              - kms:Decrypt
+              - kms:ReEncrypt*
+              - kms:GenerateDataKey*
+              - kms:DescribeKey
+            Resource: "*"
+          - Effect: Allow
+            Action:
+              - s3:PutObject
+              - s3:GetBucketPolicy
+              - s3:GetObject
+              - s3:ListBucket
+            Resource:
+              - Fn::Join:
+                  - ''
+                  - - 'arn:aws:s3:::'
+                    - !Ref artifactBucket
+                    - '/*'
+              - Fn::Join:
+                  - ''
+                  - - 'arn:aws:s3:::'
+                    - !Ref artifactBucket
+            Principal:
+              AWS: !Sub arn:aws:iam::${AWS::AccountId}:root
+          - Effect: Allow
+            Action:
+              - codepipeline:*
+              - iam:ListRoles
+              - cloudformation:Describe*
+              - cloudFormation:List*
+              - codecommit:List*
+              - codecommit:Get*
+              - codecommit:GitPull
+              - codecommit:UploadArchive
+              - codecommit:CancelUploadArchive
+              - codebuild:BatchGetBuilds
+              - codebuild:StartBuild
+              - cloudformation:CreateStack
+              - cloudformation:DeleteStack
+              - cloudformation:DescribeStacks
+              - cloudformation:UpdateStack
+              - cloudformation:CreateChangeSet
+              - cloudformation:DeleteChangeSet
+              - cloudformation:DescribeChangeSet
+              - cloudformation:ExecuteChangeSet
+              - cloudformation:SetStackPolicy
+              - cloudformation:ValidateTemplate
+              - iam:PassRole
+              - s3:ListAllMyBuckets
+              - s3:GetBucketLocation
+            Resource:
+              - "*"
+            Principal:
+              AWS: !Sub arn:aws:iam::${AWS::AccountId}:root
+
+  kmsAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: alias/codePipelineCrossAccount
+      TargetKeyId: !Ref kmsKey
+  artifactBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+
+Outputs:
+  cmk:
+    Export:
+      Name: cmk
+    Value: !GetAtt [kmsKey,Arn]
+  artifactBucket:
+    Export:
+      Name: artifactBucket
+    Value: !Ref artifactBucket

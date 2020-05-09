@@ -1,0 +1,385 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Cross-account CodePipeline stack for simple Spring Boot app
+
+Parameters:
+  project:
+    Description: Name of the project
+    Type: String
+  testAccount:
+    Description: AWS AccountNumber for test
+    Type: Number
+  gitHubRepositoryOwner:
+    Type: String
+  gitHubRepository:
+    Type: String
+  branch:
+    Type: String
+    Default: master
+  elasticBeanstalkTemplate:
+    Type: String
+  elasticBeanstalkStack:
+    Type: String
+  app:
+    Type: String
+  environment:
+    Type: String
+
+Resources:
+  gitHubWebhook:
+    Type: AWS::CodePipeline::Webhook
+    Properties:
+      Authentication: GITHUB_HMAC
+      AuthenticationConfiguration:
+        SecretToken: "{{resolve:secretsmanager:gitHubPersonalAccessToken:SecretString:token}}"
+      Filters:
+        - JsonPath: $.ref
+          MatchEquals: 'refs/heads/{Branch}'
+      TargetPipeline: !Ref pipeline
+      TargetAction: fetchFromGitHub
+      Name: gitHubWebhook
+      TargetPipelineVersion: !GetAtt
+        - pipeline
+        - Version
+      RegisterWithThirdParty: true
+
+  buildProjectRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${project}CodeBuildRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - codebuild.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: /
+
+  buildProjectPolicy:
+    Type: AWS::IAM::Policy
+    DependsOn: s3BucketPolicy
+    Properties:
+      PolicyName: !Sub ${project}CodeBuildPolicy
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:PutObject
+              - s3:GetBucketPolicy
+              - s3:GetObject
+              - s3:ListBucket
+            Resource:
+             - Fn::Join:
+                 - ''
+                 - - 'arn:aws:s3:::'
+                   - Fn::ImportValue: artifactBucket
+                   - '/*'
+             - Fn::Join:
+                 - ''
+                 - - 'arn:aws:s3:::'
+                   - Fn::ImportValue: artifactBucket
+          - Effect: Allow
+            Action:
+              - kms:Decrypt
+              - kms:Encrypt
+              - kms:GenerateDataKey
+              - kms:GenerateDataKeyWithoutPlaintext
+              - kms:ReEncrypt*
+              - kms:GenerateDataKey*
+              - kms:DescribeKey
+            Resource: !ImportValue cmk
+          - Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource: arn:aws:logs:*:*:*
+      Roles:
+        - !Ref buildProjectRole
+
+  build:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Ref project
+      Description: !Ref project
+      EncryptionKey: !ImportValue cmk
+      ServiceRole: !GetAtt buildProjectRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/java:openjdk-11
+        Type: LINUX_CONTAINER
+        EnvironmentVariables:
+          - Name: artifactBucket
+            Value: !ImportValue artifactBucket
+          - Name: kmsKey
+            Value: !ImportValue cmk
+      Source:
+        Type: CODEPIPELINE
+      TimeoutInMinutes: 5
+      Tags:
+        - Key: Name
+          Value: !Ref project
+
+  pipelineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${project}CodePipelineRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - codepipeline.amazonaws.com
+                - codepipeline.amazonaws.com
+                - codebuild.amazonaws.com
+                - cloudformation.amazonaws.com
+                - elasticbeanstalk.amazonaws.com
+                - s3.amazonaws.com
+                - kms.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+      - !Ref pipelineManagedPolicy
+      Path: /
+
+  pipelineManagedPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    DependsOn: s3BucketPolicy
+    Properties:
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - sts:AssumeRole
+            Resource:
+              - !Sub arn:aws:iam::${testAccount}:role/elasticBeanstalkDeployerRole
+              - !Sub arn:aws:iam::${testAccount}:role/toolsCodePipelineCloudFormationRole
+          - Effect: Allow
+            Action:
+              - kms:Decrypt
+              - kms:Encrypt
+              - kms:GenerateDataKey
+              - kms:GenerateDataKeyWithoutPlaintext
+              - kms:ReEncrypt*
+              - kms:GenerateDataKey*
+              - kms:DescribeKey
+            Resource: !ImportValue cmk
+          - Action:
+              - s3:Get*
+              - iam:PassRole
+              - codecommit:List*
+              - codecommit:GitPull
+              - codecommit:Get*
+              - codecommit:UploadArchive
+              - codecommit:GetUploadArchiveStatus
+              - codecommit:CancelUploadArchive
+            Resource: "*"
+            Effect: Allow
+          - Action:
+              - s3:*
+            Resource:
+              - "*"
+            Effect: Allow
+          - Action:
+              - codedeploy:CreateDeployment
+              - codedeploy:Get*
+              - codedeploy:RegisterApplicationRevision
+            Resource: "*"
+            Effect: Allow
+          - Action:
+              - elasticbeanstalk:CreateApplicationVersion
+              - elasticbeanstalk:Describe*
+              - elasticbeanstalk:UpdateEnvironment
+              - elasticloadbalancing:RegisterInstancesWithLoadBalancer
+              - autoscaling:Describe*
+              - autoscaling:ResumeProcesses
+              - autoscaling:SuspendProcesses
+              - cloudformation:GetTemplate
+              - cloudformation:Describe*
+              - cloudformation:UpdateStack
+              - ec2:Describe*
+              - elasticloadbalancing:DescribeLoadBalancers
+              - rds:DescribeDBInstances
+              - rds:DescribeOrderableDBInstanceOptions
+              - sns:ListSubscriptionsByTopic
+            Resource: "*"
+            Effect: Allow
+          - Action:
+              - lambda:invokefunction
+              - lambda:listfunctions
+            Resource: "*"
+            Effect: Allow
+          - Action:
+              - cloudformation:CreateStack
+              - cloudformation:DeleteStack
+              - cloudformation:DescribeStacks
+              - cloudformation:UpdateStack
+              - cloudformation:CreateChangeSet
+              - cloudformation:DeleteChangeSet
+              - cloudformation:DescribeChangeSet
+              - cloudformation:ExecuteChangeSet
+              - cloudformation:SetStackPolicy
+              - cloudformation:ValidateTemplate
+            Resource: "*"
+            Effect: Allow
+          - Action:
+              - s3:ListBucket
+              - s3:GetBucketPolicy
+              - s3:GetObjectAcl
+              - s3:PutObjectAcl
+              - s3:DeleteObject
+            Resource: arn:aws:s3:::elasticbeanstalk*
+            Effect: Allow
+          - Action:
+              - devicefarm:ListProjects
+              - devicefarm:ListDevicePools
+              - devicefarm:GetRun
+              - devicefarm:GetUpload
+              - devicefarm:CreateUpload
+              - devicefarm:ScheduleRun
+            Resource: "*"
+            Effect: Allow
+          - Action:
+              - codebuild:StartBuild
+              - codebuild:BatchGetBuilds
+            Resource: "*"
+            Effect: Allow
+          - Action:
+              - logs:*
+            Effect: Allow
+            Resource: "*"
+          - Action:
+              - kms:*
+            Effect: Allow
+            Resource: "*"
+
+  pipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      RoleArn: !GetAtt pipelineRole.Arn
+      Name: !Ref AWS::StackName
+      Stages:
+        - Name: source
+          Actions:
+            - Name: fetchFromGitHub
+              ActionTypeId:
+                Category: Source
+                Owner: ThirdParty
+                Version: 1
+                Provider: GitHub
+              OutputArtifacts:
+                - Name: sourced
+              Configuration:
+                Repo: !Ref gitHubRepository
+                Owner: !Ref gitHubRepositoryOwner
+                Branch: !Ref branch
+                OAuthToken: "{{resolve:secretsmanager:gitHubPersonalAccessToken:SecretString:token}}"
+                PollForSourceChanges: false
+              RunOrder: 1
+
+        - Name: build
+          Actions:
+            - Name: build
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: 1
+                Provider: CodeBuild
+              Configuration:
+                ProjectName: !Ref build
+              RunOrder: 1
+              InputArtifacts:
+                  - Name: sourced
+              OutputArtifacts:
+                  - Name: built
+
+        - Name: cloudFormationDeploy
+          Actions:
+            - Name: createChangeSet
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CloudFormation
+                Version: 1
+              InputArtifacts:
+                - Name: built
+              Configuration:
+                ActionMode: CHANGE_SET_REPLACE
+                Capabilities: CAPABILITY_IAM
+                RoleArn: !Sub arn:aws:iam::${testAccount}:role/cloudFormationDeployerRole
+                StackName: !Ref elasticBeanstalkStack
+                ChangeSetName: changeSet
+                TemplatePath: !Sub built::infra/test/${elasticBeanstalkTemplate}
+              RoleArn: !Sub arn:aws:iam::${testAccount}:role/toolsCodePipelineCloudFormationRole
+              RunOrder: 1
+            - Name: executeChangeSet
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CloudFormation
+                Version: 1
+              Configuration:
+                ActionMode: CHANGE_SET_EXECUTE
+                Capabilities: CAPABILITY_IAM
+                RoleArn: !Sub arn:aws:iam::${testAccount}:role/cloudFormationDeployerRole
+                ChangeSetName: changeSet
+                StackName: !Ref elasticBeanstalkStack
+              RoleArn: !Sub arn:aws:iam::${testAccount}:role/toolsCodePipelineCloudFormationRole
+              RunOrder: 2
+
+        - Name: deploy
+          Actions:
+            - Name: deployToBeanstalk
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: ElasticBeanstalk
+                Version: 1
+              RunOrder: 1
+              Configuration:
+                ApplicationName: !Ref app
+                EnvironmentName: !Ref environment
+              InputArtifacts:
+                - Name: built
+              Region: eu-west-2
+              RoleArn: !Sub arn:aws:iam::${testAccount}:role/elasticBeanstalkDeployerRole
+
+      ArtifactStore:
+        Type: S3
+        Location: !ImportValue artifactBucket
+        EncryptionKey:
+          Id: !ImportValue cmk
+          Type: KMS
+
+  s3BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !ImportValue artifactBucket
+      PolicyDocument:
+        Statement:
+          - Action:
+              - s3:*
+            Effect: Allow
+            Resource:
+              - Fn::Join:
+                  - ''
+                  - - 'arn:aws:s3:::'
+                    - Fn::ImportValue: artifactBucket
+                    - '/*'
+              - Fn::Join:
+                  - ''
+                  - - 'arn:aws:s3:::'
+                    - Fn::ImportValue: artifactBucket
+            Principal:
+              AWS:
+                - !Sub arn:aws:iam::${testAccount}:role/elasticBeanstalkDeployerRole
+                - !Sub arn:aws:iam::${testAccount}:role/toolsCodePipelineCloudFormationRole
+                - !Sub arn:aws:iam::${testAccount}:role/cloudFormationDeployerRole
+                - !GetAtt [buildProjectRole,Arn]

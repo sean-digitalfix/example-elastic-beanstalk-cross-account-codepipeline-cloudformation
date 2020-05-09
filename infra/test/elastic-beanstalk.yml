@@ -1,0 +1,109 @@
+Resources:
+  app:
+    Type: AWS::ElasticBeanstalk::Application
+  configurationTemplate:
+    Type: AWS::ElasticBeanstalk::ConfigurationTemplate
+    Properties:
+      ApplicationName: !Ref app
+      OptionSettings:
+        - Namespace: aws:autoscaling:asg
+          OptionName: MinSize
+          Value: '1'
+        - Namespace: aws:autoscaling:asg
+          OptionName: MaxSize
+          Value: '4'
+        - Namespace: aws:elasticbeanstalk:environment
+          OptionName: EnvironmentType
+          Value: LoadBalanced
+        - Namespace: aws:autoscaling:launchconfiguration
+          OptionName: IamInstanceProfile
+          Value: !Ref instanceProfile
+      SolutionStackName: 64bit Amazon Linux 2 v3.0.1 running Corretto 11
+  environment:
+    Type: AWS::ElasticBeanstalk::Environment
+    DependsOn:
+      - app
+      - configurationTemplate
+      - instanceProfile
+    Properties:
+      ApplicationName: !Ref app
+      TemplateName: !Ref configurationTemplate
+
+  instanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+  s3AdminRolePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: S3AdminRolePolicy
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Action: "s3:*"
+            Resource: "*"
+      Roles:
+        - Ref: instanceRole
+  ecrAdminRolePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: ecrAdminRolePolicy
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Action: "ecr:*"
+            Resource: "*"
+      Roles:
+        - Ref: instanceRole
+  ec2AdminRolePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: ec2AdminRolePolicy
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: ec2:*
+            Resource: "*"
+          - Effect: Allow
+            Action: elasticloadbalancing:*
+            Resource: "*"
+          - Effect: Allow
+            Action: cloudwatch:*
+            Resource: "*"
+          - Effect: Allow
+            Action: autoscaling:*
+            Resource: "*"
+          - Effect: Allow
+            Action: iam:CreateServiceLinkedRole
+            Resource: "*"
+            Condition:
+              StringEquals:
+                iam:AWSServiceName:
+                  - autoscaling.amazonaws.com
+                  - ec2scheduled.amazonaws.com
+                  - elasticloadbalancing.amazonaws.com
+                  - spot.amazonaws.com
+                  - spotfleet.amazonaws.com
+                  - transitgateway.amazonaws.com
+      Roles:
+        - Ref: instanceRole
+  instanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    DependsOn:
+    - instanceRole
+    - s3AdminRolePolicy
+    - ecrAdminRolePolicy
+    - ec2AdminRolePolicy
+    Properties:
+      Path: "/"
+      Roles:
+        - Ref: instanceRole

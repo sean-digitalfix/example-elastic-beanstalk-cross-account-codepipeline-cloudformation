@@ -1,0 +1,14 @@
+[
+  {
+    "ParameterKey": "toolsAccount",
+    "ParameterValue": "101256382798"
+  },
+  {
+    "ParameterKey": "cmk",
+    "ParameterValue": "arn:aws:kms:eu-west-2:101256382798:key/7cd534f5-9cee-4e3b-b255-d07537e834bc"
+  },
+  {
+    "ParameterKey": "artifactBucket",
+    "ParameterValue": "arn:aws:s3:::dummypipelineprereqs-artifactbucket-1jkcqvoyh3mhp"
+  }
+]

@@ -1,0 +1,32 @@
+buildscript {
+	repositories {
+		mavenCentral()
+	}
+}
+
+plugins {
+	id 'java'
+	id 'org.springframework.boot' version '2.2.6.RELEASE'
+	id 'io.spring.dependency-management' version '1.0.9.RELEASE'
+}
+
+wrapper { gradleVersion = '6.0' }
+
+group = 'com.blairnangle'
+
+repositories {
+	mavenCentral()
+}
+
+dependencies {
+	implementation(
+			'org.springframework.boot:spring-boot-starter-web:2.2.6.RELEASE',
+	)
+	testImplementation('org.springframework.boot:spring-boot-starter-test:2.2.6.RELEASE') {
+		exclude group: 'org.junit.vintage', module: 'junit-vintage-engine'
+	}
+}
+
+test {
+	useJUnitPlatform()
+}

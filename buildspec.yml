@@ -1,0 +1,19 @@
+version: 0.2
+
+phases:
+  build:
+    commands:
+      - ./gradlew build
+  post_build:
+    commands:
+      - mv build/libs/dummy.jar dummy-built-${CODEBUILD_BUILD_NUMBER}.jar
+artifacts:
+  files:
+    - '**/*'
+  name: dummy-built-${CODEBUILD_BUILD_NUMBER}.jar
+
+cache:
+  paths:
+    - /.gradle/caches/**/*
+    - /.gradle/wrapper/**/*
+    - .gradle/**/*

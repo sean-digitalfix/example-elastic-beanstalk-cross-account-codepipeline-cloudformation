@@ -1,0 +1,249 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Role to be assumed by CodePipeline service cross account
+
+Parameters:
+  artifactBucket:
+    Description: S3 Bucket in Tools Account, which holds the artifacts built by codebuild
+    Type: String
+  toolsAccount:
+    Description: AWS AccountNumber for Tools
+    Type: Number
+  cmk:
+    Description: ARN of the KMS CMK creates in Tools account
+    Type: String
+
+Resources:
+
+  cloudFormationRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub toolsCodePipelineCloudFormationRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS:
+                - "arn:aws:iam::101256382798:root"
+#                - Fn::Join:
+#                  - ''
+#                  - - 'arn:aws:s3::'
+#                    - !Ref toolsAccount
+#                    - ':root'
+            Action:
+              - sts:AssumeRole
+      Path: /
+
+  cloudFormationPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub toolsAcctCodePipelineCloudFormationPolicy
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - cloudformation:*
+              - s3:*
+              - iam:PassRole
+            Resource: "*"
+          - Effect: Allow
+            Action:
+              - kms:*
+            Resource: !Ref cmk
+          - Effect: Allow
+            Action:
+              - kms:Decrypt
+              - kms:Encrypt
+              - kms:GenerateDataKey
+              - kms:GenerateDataKeyWithoutPlaintext
+            Resource: !Ref cmk
+          - Effect: Allow
+            Action:
+              - s3:PutObject
+              - s3:GetBucketPolicy
+              - s3:GetObject
+              - s3:ListBucket
+            Resource:
+              - !Join ['',[!Ref artifactBucket, '/*']]
+              - !Join ['',[!Ref artifactBucket]]
+      Roles:
+        - !Ref cloudFormationRole
+
+  cloudFormationDeployerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub cloudFormationDeployerRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service:
+                - cloudformation.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: /
+  cloudFormationDeployerPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub cloudFormationDeployerPolicy
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - cloudformation:*
+              - s3:*
+              - iam:PassRole
+            Resource: "*"
+          - Effect: Allow
+            Action:
+              - kms:*
+            Resource: !Ref cmk
+          -
+            Effect: Allow
+            Action:
+              - lambda:AddPermission
+              - lambda:CreateFunction
+              - lambda:DeleteFunction
+              - lambda:InvokeFunction
+              - lambda:RemovePermission
+              - lambda:UpdateFunctionCode
+              - lambda:GetFunctionConfiguration
+              - lambda:GetFunction
+              - lambda:UpdateFunctionConfiguration
+              - elasticbeanstalk:*
+              - events:* # Required for the sample lambda function to work
+              - iam:CreateRole
+              - iam:CreatePolicy
+              - iam:GetRole
+              - iam:DeleteRole
+              - iam:PutRolePolicy
+              - iam:PassRole
+              - iam:DeleteRolePolicy
+              - iam:RemoveRoleFromInstanceProfile # need to delete stacks when things go wrong
+              - iam:DeleteInstanceProfile # need to delete stacks when things go wrong
+              - cloudformation:*
+              - ec2:Describe*
+              - ec2:RevokeSecurityGroupEgress # need
+              - ec2:RevokeSecurityGroupIngress # need
+              - cloudwatch:DeleteAlarms
+              - elasticloadbalancing:DeleteLoadBalancer # need for deletions
+              - autoscaling:DeleteLaunchConfiguration # need
+              - autoscaling:DescribeAutoScalingGroup # need
+              - autoscaling:DescribeAutoScalingGroups # need
+              - autoscaling:DeletePolicy # need
+              - ec2:DeleteSecurityGroup # need
+              - ec2:CreateSecurityGroup
+              - autoscaling:UpdateAutoScalingGroup # need
+              - autoscaling:DescribeScalingActivities # need
+            Resource: "*"
+          - Effect: Allow
+            Action:
+              - kms:Decrypt
+              - kms:Encrypt
+              - kms:GenerateDataKey
+              - kms:GenerateDataKeyWithoutPlaintext
+            Resource: !Ref cmk
+          - Effect: Allow
+            Action:
+              - s3:PutObject
+              - s3:GetBucketPolicy
+              - s3:GetObject
+              - s3:ListBucket
+            Resource:
+              - !Join ['',[!Ref artifactBucket, '/*']]
+              - !Join ['',[!Ref artifactBucket]]
+      Roles:
+        -
+          !Ref cloudFormationDeployerRole
+
+  elasticBeanstalkDeployerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub elasticBeanstalkDeployerRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS:
+                - "arn:aws:iam::101256382798:root"
+#                - Fn::Join:
+#                  - ''
+#                  - - 'arn:aws:s3::'
+#                    - !Ref toolsAccount
+#                    - ':root'
+            Action:
+              - sts:AssumeRole
+      Path: /
+
+  elasticBeanstalkDeployerPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub elasticBeanstalkDeployerPolicy
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - cloudformation:*
+              - s3:*
+              - iam:PassRole
+            Resource: "*"
+          - Effect: Allow
+            Action:
+              - autoscaling:DescribeAutoScalingGroups
+              - autoscaling:SuspendProcesses
+              - autoscaling:DescribeScalingActivities
+              - autoscaling:ResumeProcesses
+              - autoscaling:DescribeLaunchConfigurations # need
+              - autoscaling:CreateLaunchConfiguration
+              - autoscaling:DeleteLaunchConfiguration
+              - autoscaling:UpdateAutoScalingGroup
+              - elasticloadbalancing:RegisterInstancesWithLoadBalancer
+              - elasticloadbalancing:DescribeLoadBalancers
+              - elasticloadbalancing:ApplySecurityGroupsToLoadBalancer #need
+              - ec2:AuthorizeSecurityGroupIngress # need
+              - ec2:RevokeSecurityGroupIngress # need
+              - ec2:DescribeImages # need
+              - ec2:DescribeSecurityGroups # need
+              - ec2:DeleteSecurityGroup # need
+              - ec2:CreateSecurityGroup # need
+              - ec2:RevokeSecurityGroupEgress # need
+              - ec2:DescribeInstances
+              - ec2:DescribeInstanceAttribute
+              - autoscaling:TerminateInstanceInAutoScalingGroup
+            Resource: "*"
+          - Effect: Allow
+            Action:
+              - kms:Decrypt
+              - kms:Encrypt
+              - kms:GenerateDataKey
+              - kms:GenerateDataKeyWithoutPlaintext
+            Resource: !Ref cmk
+          - Effect: Allow
+            Action:
+              - elasticbeanstalk:*
+              - iam:CreateRole
+              - iam:CreatePolicy
+              - iam:GetRole
+              - iam:DeleteRole
+              - iam:PutRolePolicy
+              - iam:PassRole
+              - iam:DeleteRolePolicy
+              - cloudformation:*
+            Resource: "*"
+          - Effect: Allow
+            Action:
+              - s3:PutObject
+              - s3:GetBucketPolicy
+              - s3:GetObject
+              - s3:ListBucket
+            Resource:
+             - !Join ['',[!Ref artifactBucket, '/*']]
+             - !Join ['',[!Ref artifactBucket]]
+      Roles:
+        - !Ref elasticBeanstalkDeployerRole

@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+
+. infra/.config
+
+delete_stack() {
+    STACK=$1
+    PROFILE=$2
+
+    DELETE_STACK_OUTPUT="$(aws cloudformation delete-stack --stack-name ${STACK} --profile ${PROFILE} --region ${REGION})" || { echo "${DELETE_STACK_OUTPUT}"; exit 1; }
+
+    echo -e "Successfully triggered stack deletion for ${STACK}\n"
+}
+
+wait_for_stack_deletion() {
+    STACK=$1
+    PROFILE=$2
+
+    WAIT_FOR_STACK_DELETION_OUTPUT="$(aws cloudformation wait stack-delete-complete --stack-name ${STACK} --profile ${PROFILE} --region ${REGION})" || { echo "${WAIT_FOR_STACK_DELETION_OUTPUT}"; exit 1; }
+
+    echo -e "Waiting for stack deletion to finish…\n"
+}
+
+delete_and_wait() {
+    STACK=$1
+    PROFILE=$2
+
+    delete_stack ${STACK} ${PROFILE}
+    wait_for_stack_deletion ${STACK} ${PROFILE}
+
+    echo -e "Successfully deleted stack ${STACK}!\n"
+}
+
+STACK_RESOURCES=$(aws --profile ${TEST_PROFILE} cloudformation describe-stack-resources --stack-name ${ELASTIC_BEANSTALK_STACK} | jq -c .StackResources[])
+
+for resource in ${STACK_RESOURCES}; do
+    logical_resource_id=$(echo ${resource} | jq .LogicalResourceId | tr -d '"')
+    physical_resource_id=$(echo ${resource} | jq .PhysicalResourceId | tr -d '"')
+    if [[ "${logical_resource_id}" == "app" ]]; then
+        APP=${physical_resource_id}
+    elif [[ "${logical_resource_id}" == "environment" ]]; then
+        ENVIRONMENT=${physical_resource_id}
+    fi
+done
+
+
+
+echo -e "Terminating Elastic Beanstalk environment ${ENVIRONMENT}\n"
+
+TERMINATE_ENVIRONMENT_OUTPUT="$(aws elasticbeanstalk terminate-environment --environment-name ${ENVIRONMENT} --profile ${TEST_PROFILE} --region ${REGION})" || { echo "${TERMINATE_ENVIRONMENT_OUTPUT}"; exit 1; }
+
+echo -e "Deleting Elastic Beanstalk application ${APP}\n"
+
+DELETE_APPLICATION_OUTPUT="$(aws elasticbeanstalk delete-application --application-name ${APP} --profile ${TEST_PROFILE} --region ${REGION})" || { echo "${DELETE_APPLICATION_OUTPUT}"; exit 1; }
+
+delete_and_wait dummyElasticBeanstalk ${TEST_PROFILE}
+
+delete_and_wait dummyPipeline ${TOOLS_PROFILE}
+
+delete_and_wait dummyPipelinePreReqs ${TOOLS_PROFILE}
+
+delete_and_wait dummyIam ${TEST_PROFILE}
+
+echo -e "DONE!"
