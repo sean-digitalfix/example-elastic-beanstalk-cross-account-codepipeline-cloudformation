@@ -58,6 +58,23 @@ $ ./go
 
 It should take ~14 minutes to complete.
 
+### Creating and Associating a Custom Security Group
+
+See the "Security Groups" section of the [blog post](https://blairnangle.com/2020-05-10/gotchas-elastic-beanstalk-cross-account-cloudformation-codepipeline)
+associated with this project to understand what is going on here.
+Bear in mind that the security group created will leave the app open to all traffic on the internet and is just
+intended to provide an automated way of validating the project end-to-end.
+
+Run `create-and-associate-security-group` from the project root to create a new security group for the load balancer
+associated with the Elastic Beanstalk environment and add it as an inbound source for the existing instance security
+group:
+
+```bash
+$ ./create-and-associate-security-group
+```
+
+It should take ~1 minute to complete.
+
 ### Cleaning up
 
 Run the `destroy` script from the project root to delete all the AWS resources:
