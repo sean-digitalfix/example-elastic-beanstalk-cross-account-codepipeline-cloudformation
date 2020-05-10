@@ -70,4 +70,4 @@ echo -e "Associating new security group ${LOAD_BALANCER_SECURITY_GROUP} with the
 
 ASSOCIATE_LB_SG_WITH_EB_SG_OUTPUT="$(aws --profile ${TEST_PROFILE} ec2 authorize-security-group-ingress --group-id ${AUTO_GENERATED_ELASTIC_BEANSTALK_SECURITY_GROUP} --source-group ${LOAD_BALANCER_SECURITY_GROUP} --protocol tcp --port 80)" || { echo "${ASSOCIATE_LB_SG_WITH_EB_SG_OUTPUT}"; exit 1; }
 
-echo "Done!:"
+echo "Done!"
