@@ -81,4 +81,4 @@ this project. They incorporate resources that can be reused for other cross-acco
 
 ## License
 
-Distributed under [Eclipse Public License v2.0](./LICENSE).
+Distributed under [Apache License, Version 2.0](./LICENSE).
