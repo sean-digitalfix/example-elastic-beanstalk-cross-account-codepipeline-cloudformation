@@ -1,9 +1,10 @@
 # CloudFormation-Elastic Beanstalk-CodePipeline Example
 
-Gotchas encountered in the creation of this process are covered in [this blog post](https://blairnangle.com/2020-05-10/gotchas-elastic-beanstalk-cross-account-cloudformation-codepipeline).
+Gotchas encountered in the creation of this process are covered in 
+[this blog post](https://blairnangle.com/2020-05-10/gotchas-elastic-beanstalk-cross-account-cloudformation-codepipeline).
 
-Example project to create the infrastructure and cross-account continuous deployment (CD) pipeline for and deploy a 
-simple Spring Boot application on AWS's Elastic Beanstalk.
+Example project to create the infrastructure and cross-account continuous deployment pipeline for a simple Spring Boot 
+application on AWS's Elastic Beanstalk.
 
 ## Prerequisites
 
