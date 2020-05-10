@@ -52,12 +52,21 @@ echo -e "Deleting Elastic Beanstalk application ${APP}\n"
 
 DELETE_APPLICATION_OUTPUT="$(aws elasticbeanstalk delete-application --application-name ${APP} --profile ${TEST_PROFILE} --region ${REGION})" || { echo "${DELETE_APPLICATION_OUTPUT}"; exit 1; }
 
-delete_and_wait dummyElasticBeanstalk ${TEST_PROFILE}
+delete_and_wait ${ELASTIC_BEANSTALK_STACK} ${TEST_PROFILE}
 
-delete_and_wait dummyPipeline ${TOOLS_PROFILE}
+delete_and_wait ${PIPELINE_STACK} ${TOOLS_PROFILE}
 
-delete_and_wait dummyPipelinePreReqs ${TOOLS_PROFILE}
+delete_and_wait ${PRE_REQS_STACK} ${TOOLS_PROFILE}
 
-delete_and_wait dummyIam ${TEST_PROFILE}
+delete_and_wait ${IAM_STACK} ${TEST_PROFILE}
+
+STACKS=$(aws cloudformation describe-stacks --profile ${TEST_PROFILE} --region ${REGION} | jq -c .Stacks[])
+
+for stack in ${STACKS}; do
+    stack_name=$(echo ${stack} | jq .StackName | tr -d '"')
+    if [[ "${stack_name}" == ${SECURITY_GROUP_STACK} ]]; then
+        delete_and_wait ${SECURITY_GROUP_STACK} ${TEST_PROFILE}
+    fi
+done
 
 echo -e "DONE!"
