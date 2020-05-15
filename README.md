@@ -98,3 +98,7 @@ if the naming convention is to be consistent.
 
 The `dummyPipelinePreReqs` (tools account) and `dummyIam` (test account) stacks are not specific to the deployment of 
 this project. They incorporate resources that can be reused for other cross-account CodePipeline pipelines.
+
+## License
+
+Distributed under [MIT License](./LICENSE).
