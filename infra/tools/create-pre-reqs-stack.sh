@@ -47,7 +47,7 @@ echo -e "Writing newly-created KMS key and S3 artifact bucket to infra/test/iam.
 echo '[
   {
     "ParameterKey": "toolsAccount",
-    "ParameterValue": "101256382798"
+    "ParameterValue": "${TOOLS_ACCOUNT}"
   },
   {
     "ParameterKey": "cmk",
